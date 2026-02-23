@@ -1080,8 +1080,8 @@ class Balls(commands.GroupCog, group_name=settings.balls_slash_name):
             
             # Check if it exceeds 1024 characters
             if len(collectible_names) > 1024:
-                # Split into chunks
-                entries = []
+                # Split into chunks and create pages
+                chunks = []
                 current_chunk = []
                 current_length = 0
                 
@@ -1090,8 +1090,7 @@ class Balls(commands.GroupCog, group_name=settings.balls_slash_name):
                     line_length = len(line)
                     
                     if current_length + line_length > 1024:
-                        chunk_text = "".join(current_chunk)
-                        entries.append((f"∥ T{tier}", chunk_text))
+                        chunks.append("".join(current_chunk))
                         current_chunk = [line]
                         current_length = line_length
                     else:
@@ -1099,13 +1098,74 @@ class Balls(commands.GroupCog, group_name=settings.balls_slash_name):
                         current_length += line_length
                 
                 if current_chunk:
-                    chunk_text = "".join(current_chunk)
-                    entries.append((f"∥ T{tier}", chunk_text))
+                    chunks.append("".join(current_chunk))
                 
-                source = FieldPageSource(entries, per_page=1, inline=False, clear_description=False)
-                source.embed.title = f"{settings.bot_name} Rarity List"
-                pages = Pages(source=source, interaction=interaction, compact=False)
-                await pages.start()
+                # Create embeds for each chunk
+                embeds = []
+                for i, chunk in enumerate(chunks):
+                    embed = discord.Embed(
+                        title=f"{settings.bot_name} Rarity List - T{tier}",
+                        color=discord.Color.blurple(),
+                    )
+                    embed.add_field(name=f"∥ T{tier}", value=chunk, inline=False)
+                    embed.set_footer(text=f"Page {i+1}/{len(chunks)}")
+                    embeds.append(embed)
+                
+                # Simple pagination view
+                class SimpleView(discord.ui.View):
+                    def __init__(self):
+                        super().__init__(timeout=180)
+                        self.page = 0
+                    
+                    @discord.ui.button(label="<<", style=discord.ButtonStyle.blurple, disabled=True)
+                    async def first(self, interaction: discord.Interaction, button: discord.ui.Button):
+                        if self.page > 0:
+                            self.page = 0
+                            button.disabled = True
+                            self.children[1].disabled = True
+                            self.children[2].disabled = (self.page == len(embeds) - 1)
+                            self.children[3].disabled = True
+                            await interaction.response.edit_message(embed=embeds[self.page], view=self)
+                        else:
+                            await interaction.response.defer()
+                    
+                    @discord.ui.button(label="Back", style=discord.ButtonStyle.blurple, disabled=True)
+                    async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
+                        if self.page > 0:
+                            self.page -= 1
+                            button.disabled = (self.page == 0)
+                            self.children[2].disabled = (self.page == len(embeds) - 1)
+                            self.children[0].disabled = (self.page == 0)
+                            self.children[3].disabled = (self.page == len(embeds) - 1)
+                            await interaction.response.edit_message(embed=embeds[self.page], view=self)
+                        else:
+                            await interaction.response.defer()
+                    
+                    @discord.ui.button(label="Next", style=discord.ButtonStyle.blurple)
+                    async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
+                        if self.page < len(embeds) - 1:
+                            self.page += 1
+                            button.disabled = (self.page == len(embeds) - 1)
+                            self.children[1].disabled = (self.page == 0)
+                            self.children[0].disabled = (self.page == 0)
+                            self.children[3].disabled = (self.page == len(embeds) - 1)
+                            await interaction.response.edit_message(embed=embeds[self.page], view=self)
+                        else:
+                            await interaction.response.defer()
+                    
+                    @discord.ui.button(label=">>", style=discord.ButtonStyle.blurple)
+                    async def last(self, interaction: discord.Interaction, button: discord.ui.Button):
+                        if self.page < len(embeds) - 1:
+                            self.page = len(embeds) - 1
+                            button.disabled = True
+                            self.children[1].disabled = (self.page == 0)
+                            self.children[2].disabled = True
+                            self.children[0].disabled = (self.page == 0)
+                            await interaction.response.edit_message(embed=embeds[self.page], view=self)
+                        else:
+                            await interaction.response.defer()
+                
+                await interaction.response.send_message(embed=embeds[0], view=SimpleView())
             else:
                 embed = discord.Embed(
                     title=f"{settings.bot_name} Rarity List",
@@ -1115,8 +1175,8 @@ class Balls(commands.GroupCog, group_name=settings.balls_slash_name):
                 await interaction.response.send_message(embed=embed)
             return
 
-        # Show full paginated rarity list with smart page breaks
-        entries = []
+        # Show full rarity list - create pages with 2 fields per page
+        all_entries = []
         
         for i, rarity in enumerate(sorted_rarities, 1):
             collectibles = rarity_to_collectibles[rarity]
@@ -1136,15 +1196,7 @@ class Balls(commands.GroupCog, group_name=settings.balls_slash_name):
                     
                     if current_length + line_length > 1024:
                         chunk_text = "".join(current_chunk)
-                        
-                        # Check if we need a page break (same tier name on current page)
-                        if len(entries) > 0 and len(entries) % 2 == 1:
-                            # There's 1 field on current page, check if it's the same tier
-                            if entries[-1][0] == f"∥ T{i}":
-                                # Force new page by adding empty field
-                                entries.append(("\u200b", "\u200b"))
-                        
-                        entries.append((f"∥ T{i}", chunk_text))
+                        all_entries.append((f"∥ T{i}", chunk_text))
                         current_chunk = [line]
                         current_length = line_length
                     else:
@@ -1153,18 +1205,85 @@ class Balls(commands.GroupCog, group_name=settings.balls_slash_name):
                 
                 if current_chunk:
                     chunk_text = "".join(current_chunk)
-                    
-                    # Check if we need a page break for the last chunk
-                    if len(entries) > 0 and len(entries) % 2 == 1:
-                        if entries[-1][0] == f"∥ T{i}":
-                            entries.append(("\u200b", "\u200b"))
-                    
-                    entries.append((f"∥ T{i}", chunk_text))
+                    all_entries.append((f"∥ T{i}", chunk_text))
             else:
                 # Tier fits in one field
-                entries.append((f"∥ T{i}", names))
+                all_entries.append((f"∥ T{i}", names))
 
-        source = FieldPageSource(entries, per_page=2, inline=False, clear_description=False)
-        source.embed.title = f"{settings.bot_name} Rarity List"
-        pages = Pages(source=source, interaction=interaction, compact=False)
-        await pages.start()
+        # Group entries into pages (2 fields per page)
+        pages = []
+        for i in range(0, len(all_entries), 2):
+            page_entries = all_entries[i:i+2]
+            embed = discord.Embed(
+                title=f"{settings.bot_name} Rarity List",
+                color=discord.Color.blurple()
+            )
+            for name, value in page_entries:
+                embed.add_field(name=name, value=value, inline=False)
+            embed.set_footer(text=f"Page {len(pages)+1}/{(len(all_entries)+1)//2}")
+            pages.append(embed)
+        
+        if not pages:
+            await interaction.response.send_message("No rarity data available.", ephemeral=True)
+            return
+        
+        # If only one page, send directly
+        if len(pages) == 1:
+            await interaction.response.send_message(embed=pages[0])
+            return
+        
+        # Create pagination view
+        class SimpleView(discord.ui.View):
+            def __init__(self):
+                super().__init__(timeout=180)
+                self.page = 0
+            
+            @discord.ui.button(label="<<", style=discord.ButtonStyle.blurple, disabled=True)
+            async def first(self, interaction: discord.Interaction, button: discord.ui.Button):
+                if self.page > 0:
+                    self.page = 0
+                    button.disabled = True
+                    self.children[1].disabled = True
+                    self.children[2].disabled = (self.page == len(pages) - 1)
+                    self.children[3].disabled = True
+                    await interaction.response.edit_message(embed=pages[self.page], view=self)
+                else:
+                    await interaction.response.defer()
+            
+            @discord.ui.button(label="Back", style=discord.ButtonStyle.blurple, disabled=True)
+            async def back(self, interaction: discord.Interaction, button: discord.ui.Button):
+                if self.page > 0:
+                    self.page -= 1
+                    button.disabled = (self.page == 0)
+                    self.children[2].disabled = (self.page == len(pages) - 1)
+                    self.children[0].disabled = (self.page == 0)
+                    self.children[3].disabled = (self.page == len(pages) - 1)
+                    await interaction.response.edit_message(embed=pages[self.page], view=self)
+                else:
+                    await interaction.response.defer()
+            
+            @discord.ui.button(label="Next", style=discord.ButtonStyle.blurple)
+            async def next(self, interaction: discord.Interaction, button: discord.ui.Button):
+                if self.page < len(pages) - 1:
+                    self.page += 1
+                    button.disabled = (self.page == len(pages) - 1)
+                    self.children[1].disabled = (self.page == 0)
+                    self.children[0].disabled = (self.page == 0)
+                    self.children[3].disabled = (self.page == len(pages) - 1)
+                    await interaction.response.edit_message(embed=pages[self.page], view=self)
+                else:
+                    await interaction.response.defer()
+            
+            @discord.ui.button(label=">>", style=discord.ButtonStyle.blurple)
+            async def last(self, interaction: discord.Interaction, button: discord.ui.Button):
+                if self.page < len(pages) - 1:
+                    self.page = len(pages) - 1
+                    button.disabled = True
+                    self.children[1].disabled = (self.page == 0)
+                    self.children[2].disabled = True
+                    self.children[0].disabled = (self.page == 0)
+                    await interaction.response.edit_message(embed=pages[self.page], view=self)
+                else:
+                    await interaction.response.defer()
+        
+        await interaction.response.send_message(embed=pages[0], view=SimpleView())
