@@ -179,33 +179,59 @@ async def give(ctx: commands.Context[BallsDexBot], user: discord.User, *, flags:
     await ctx.defer(ephemeral=True)
 
     player, created = await Player.objects.aget_or_create(discord_id=user.id)
-    instance = await BallInstance.objects.acreate(
-        ball=flags.countryball,
-        player=player,
-        attack_bonus=(
-            flags.attack_bonus
-            if flags.attack_bonus is not None
-            else random.randint(-settings.max_attack_bonus, settings.max_attack_bonus)
-        ),
-        health_bonus=(
-            flags.health_bonus
-            if flags.health_bonus is not None
-            else random.randint(-settings.max_health_bonus, settings.max_health_bonus)
-        ),
-        special=flags.special,
-    )
-    await ctx.send(
-        f"`{flags.countryball.country}` (`{instance.pk:0X}`) "
-        f"{settings.collectible_name} was successfully given to "
-        f"`{user}`.\nSpecial: `{flags.special.name if flags.special else None}` • ATK: "
-        f"`{instance.attack_bonus:+d}` • HP:`{instance.health_bonus:+d}` "
-    )
-    log.info(
-        f"{ctx.author} gave {settings.collectible_name} {flags.countryball.country} (`{instance.pk:0X}`) "
-        f"to {user}. (Special={flags.special.name if flags.special else None} "
-        f"ATK={instance.attack_bonus:+d} HP={instance.health_bonus:+d}).",
-        extra={"webhook": True},
-    )
+    instances = []
+    for _ in range(flags.n):
+        instance = await BallInstance.objects.acreate(
+            ball=flags.countryball,
+            player=player,
+            attack_bonus=(
+                flags.attack_bonus
+                if flags.attack_bonus is not None
+                else random.randint(-settings.max_attack_bonus, settings.max_attack_bonus)
+            ),
+            health_bonus=(
+                flags.health_bonus
+                if flags.health_bonus is not None
+                else random.randint(-settings.max_health_bonus, settings.max_health_bonus)
+            ),
+            special=flags.special,
+        )
+        instances.append(instance)
+    if flags.n == 1:
+        instance = instances[0]
+        await ctx.send(
+            f"`{flags.countryball.country}` (`{instance.pk:0X}`) "
+            f"{settings.collectible_name} was successfully given to "
+            f"`{user}`.\nSpecial: `{flags.special.name if flags.special else None}` • ATK: "
+            f"`{instance.attack_bonus:+d}` • HP:`{instance.health_bonus:+d}` "
+        )
+        log.info(
+            f"{ctx.author} gave {settings.collectible_name} {flags.countryball.country} (`{instance.pk:0X}`) "
+            f"to {user}. (Special={flags.special.name if flags.special else None} "
+            f"ATK={instance.attack_bonus:+d} HP={instance.health_bonus:+d}).",
+            extra={"webhook": True},
+        )
+    else:
+        bonus_info = ""
+        if flags.attack_bonus is not None or flags.health_bonus is not None:
+            atk_str = f"ATK={flags.attack_bonus:+d}" if flags.attack_bonus is not None else "ATK=random"
+            hp_str = f"HP={flags.health_bonus:+d}" if flags.health_bonus is not None else "HP=random"
+            bonus_info = f"\n{atk_str} • {hp_str}"
+        await ctx.send(
+            f"`{flags.n}x {flags.countryball.country}` "
+            f"{settings.plural_collectible_name} were successfully given to "
+            f"`{user}`.\nSpecial: `{flags.special.name if flags.special else None}`{bonus_info}"
+        )
+        log_bonus = ""
+        if flags.attack_bonus is not None or flags.health_bonus is not None:
+            atk_log = f"ATK={flags.attack_bonus:+d}" if flags.attack_bonus is not None else "ATK=random"
+            hp_log = f"HP={flags.health_bonus:+d}" if flags.health_bonus is not None else "HP=random"
+            log_bonus = f" {atk_log} {hp_log}"
+        log.info(
+            f"{ctx.author} gave {flags.n}x {settings.collectible_name} {flags.countryball.country} "
+            f"to {user}. (Special={flags.special.name if flags.special else None}{log_bonus}).",
+            extra={"webhook": True},
+        )
 
 
 @balls.command(name="info")
