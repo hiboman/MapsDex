@@ -1,3 +1,4 @@
+import io
 import logging
 from typing import TYPE_CHECKING, cast
 
@@ -108,14 +109,14 @@ class Admin(commands.Cog):
         """Get all ball spawn channels for broadcasting"""
         try:
             channels = set()
-            async for config in GuildConfig.filter(enabled=True, spawn_channel__isnull=False):
+            async for config in GuildConfig.objects.filter(enabled=True, spawn_channel__isnull=False):
                 channel = self.bot.get_channel(config.spawn_channel)
                 if channel:
                     channels.add(config.spawn_channel)
                 else:
                     try:
                         config.enabled = False
-                        await config.save()
+                        await config.asave()
                     except Exception:
                         pass
             return channels
@@ -435,7 +436,7 @@ class Admin(commands.Cog):
             await ctx.send(
                 f"Failed to send message: {str(e)}", ephemeral=True
             )
-'''
+
     @admin.command(name="broadcast", description="Send a broadcast message to all ball spawn channels")
     @checks.is_superuser()
     @app_commands.choices(broadcast_type=[
@@ -483,7 +484,7 @@ class Admin(commands.Cog):
                     "------------------------\n"
                 )
                 if not anonymous:
-                    broadcast_message += f"*Sent by {ctx.user.name}*"
+                    broadcast_message += f"*Sent by {ctx.author.name}*"
             
             file = None
             file_data = None
@@ -581,7 +582,7 @@ class Admin(commands.Cog):
                 "------------------------\n"
             )
             if not anonymous:
-                dm_message += f"*Sent by {ctx.user.name}*"
+                dm_message += f"*Sent by {ctx.author.name}*"
             
             for user_id in user_id_list:
                 try:
@@ -611,4 +612,3 @@ class Admin(commands.Cog):
                 await ctx.send("An error occurred while executing the command. Please try again later.", ephemeral=True)
             except Exception:
                 pass
-'''
