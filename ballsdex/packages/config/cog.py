@@ -76,6 +76,14 @@ class Config(commands.GroupCog):
                 ephemeral=True,
             )
             return
+        
+        if guild.member_count and guild.member_count < 15:
+            await interaction.response.send_message(
+                f"Servers with less than 15 members cannot configure {settings.bot_name}. "
+                "This is to prevent farming in small servers.",
+                ephemeral=True,
+            )
+            return
         readable_channels = len(
             [x for x in guild.text_channels if x.permissions_for(guild.me).read_messages]
         )
@@ -97,9 +105,9 @@ class Config(commands.GroupCog):
     @app_commands.command()
     @app_commands.checks.has_permissions(manage_guild=True)
     @app_commands.checks.bot_has_permissions(send_messages=True)
-    async def disable(self, interaction: discord.Interaction["BallsDexBot"]):
+    async def toggle(self, interaction: discord.Interaction["BallsDexBot"]):
         """
-        Disable or enable countryballs spawning.
+        Toggle countryball spawning.
         """
         guild = cast(discord.Guild, interaction.guild)  # guild-only command
         config, created = await GuildConfig.objects.aget_or_create(guild_id=interaction.guild_id)
