@@ -44,9 +44,9 @@ class SpecialAdmin(admin.ModelAdmin):
             else obj.emoji
         )
 
-    def formfield_for_dbfield(
+    def formfield_for_dbfield(  # type: ignore[override]
         self, db_field: "Field[Any, Any]", request: "HttpRequest | None", **kwargs: Any
-    ) -> "Field[Any, Any] | None":
+    ) -> "Field | None":
         if db_field.name == "catch_phrase":
             kwargs["widget"] = Textarea()
         return super().formfield_for_dbfield(db_field, request, **kwargs)  # type: ignore

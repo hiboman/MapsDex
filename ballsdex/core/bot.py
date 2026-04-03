@@ -219,7 +219,7 @@ class BallsDexBot(commands.AutoShardedBot):
         self.command_log: set[int] = set()
         self.locked_balls = TTLCache(maxsize=99999, ttl=60 * 30)
 
-        self.owner_ids: set[int] = set()
+        self.owner_ids: set[int] = set()  # type: ignore[assignment]
 
     async def start_prometheus_server(self):
         self.prometheus_server = PrometheusServer(self, settings.prometheus_host, settings.prometheus_port)
@@ -281,7 +281,7 @@ class BallsDexBot(commands.AutoShardedBot):
             async with aiohttp.ClientSession() as session:
                 async with session.get(f"{base_url}/health", timeout=ClientTimeout(total=10)) as resp:
                     return resp.status == 200
-        except aiohttp.ClientConnectionError, asyncio.TimeoutError:
+        except (aiohttp.ClientConnectionError, asyncio.TimeoutError):
             return False
 
     async def setup_hook(self) -> None:

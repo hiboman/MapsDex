@@ -121,7 +121,7 @@ class ModelTransformer[T: "Model"](app_commands.Transformer, commands.Converter)
         """
         raise NotImplementedError()
 
-    async def autocomplete(
+    async def autocomplete(  # type: ignore[override]
         self, interaction: discord.Interaction["BallsDexBot"], value: str
     ) -> list[app_commands.Choice[int]]:
         t1 = time.time()
@@ -132,20 +132,20 @@ class ModelTransformer[T: "Model"](app_commands.Transformer, commands.Converter)
         log.debug(f"{self.name.title()} autocompletion took {round((t2 - t1) * 1000)}ms, {len(choices)} results")
         return choices
 
-    async def transform(self, interaction: discord.Interaction["BallsDexBot"], value: str) -> T:
+    async def transform(self, interaction: discord.Interaction["BallsDexBot"], value: str) -> T:  # type: ignore[override]
         if not value:
             raise commands.BadArgument("You need to use the autocomplete function for the economy selection.")
         try:
             instance = await self.get_from_pk(int(value, self.base))
             await self.validate(await commands.Context.from_interaction(interaction), instance)
-        except self.model.DoesNotExist, KeyError, ValueError:
+        except (self.model.DoesNotExist, KeyError, ValueError):
             raise commands.BadArgument(
                 f"The {self.name} could not be found. Make sure to use the autocomplete function on this command."
             )
         else:
             return instance
 
-    async def convert(self, ctx: commands.Context["BallsDexBot"], argument: str) -> T:
+    async def convert(self, ctx: commands.Context["BallsDexBot"], argument: str) -> T:  # type: ignore[override]
         try:
             instance = await self.get_from_text(argument)
             await self.validate(ctx, instance)
@@ -257,7 +257,7 @@ class TTLModelTransformer[T: "Model"](ModelTransformer[T]):
             self.last_refresh = t
             self.search_map = {x: self.key(x).lower() for x in self.items.values()}
 
-    async def get_options(
+    async def get_options(  # type: ignore[override]
         self, interaction: discord.Interaction["BallsDexBot"], value: str
     ) -> list[app_commands.Choice[str]]:
         await self.maybe_refresh()
