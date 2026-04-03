@@ -27,7 +27,7 @@ class AcceptTOSView(View):
         self.add_item(Button(style=discord.ButtonStyle.link, label="Terms of Service", url=settings.terms_of_service))
         self.add_item(Button(style=discord.ButtonStyle.link, label="Privacy policy", url=settings.privacy_policy))
 
-    async def interaction_check(self, interaction: discord.Interaction["BallsDexBot"]) -> bool:
+    async def interaction_check(self, interaction: discord.Interaction["BallsDexBot"]) -> bool:  # type: ignore[override]
         if interaction.user.id != self.new_player.id:
             await interaction.response.send_message("You are not allowed to interact with this menu.", ephemeral=True)
             return False

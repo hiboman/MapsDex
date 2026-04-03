@@ -118,10 +118,10 @@ class Admin(commands.Cog):
             log.error(f"Error getting broadcast channels: {str(e)}")
             return set()
 
-    async def cog_check(self, ctx: commands.Context["BallsDexBot"]) -> bool:
+    async def cog_check(self, ctx: commands.Context["BallsDexBot"]) -> bool:  # type: ignore[override]
         return await checks.is_staff().predicate(ctx)
 
-    async def cog_app_command_error(
+    async def cog_app_command_error(  # type: ignore[override]
         self, interaction: discord.Interaction["BallsDexBot"], error: app_commands.AppCommandError
     ):
         if isinstance(error, app_commands.CommandSignatureMismatch):
