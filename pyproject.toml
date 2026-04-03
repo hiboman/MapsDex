@@ -20,29 +20,37 @@ dependencies = [
     "discord.py",
 
     # django admin panel
-    "uvicorn[standard]==0.37.0",
-    "django==6.0.0",
+    "uvicorn[standard]==0.40.0",
+    "django>=6.0.3",
     "django-allow-cidr==0.8.0",
     "django-nonrelated-inlines==0.2",
     "django-admin-autocomplete-filter==0.7.1",
-    "django-admin-action-forms==2.2.0",
+    "django-admin-action-forms==2.2.1",
     "django-admin-inline-paginator==0.4.0",
-    "dj-database-url==3.0.1",
-    "social-auth-app-django==5.6.0",
-    "psycopg[pool]==3.2.10",
-    "psycopg-binary==3.2.10",
+    "dj-database-url==3.1.1",
+    "social-auth-app-django==5.7.0",
+    "psycopg[pool]==3.3.2",
+    "psycopg-binary==3.3.2",
 
     # metrics
-    "prometheus-client==0.23.1",
+    "prometheus-client==0.24.1",
 
     # misc
-    "rich==14.2.0",
+    "rich==14.3.2",
     "python-dateutil>=2.9.0",
-    "Pillow==12.0.0",
+    "Pillow>=12.1.1",
     "pyyaml==6.0.3",
-    "cachetools==6.2.1",
-    "sentry-sdk[django]==2.42.0",
+    "cachetools==7.0.1",
+    "sentry-sdk[django]==2.53.0",
     "watchfiles==1.1.1",  # uvicorn dependency, needs version bump for 3.14
+    "language-tool-python==3.2.2",  # Grammar correction for blacklist reasons
+
+    # vulnerability patches
+    "pyjwt==2.12.1",
+    "aiohttp==3.13.5",
+    "requests==2.33.1",
+    "pygments==2.20.0",
+    "cryptography==46.0.6",
 ]
 
 [project.optional-dependencies]
@@ -62,6 +70,7 @@ docs = [
     "mkdocs-material>=9.6.14",
     "mkdocstrings[python]>=0.29.1",
 ]
+audit = ["pip-audit"]
 
 [project.scripts]
 ballsdex = "ballsdex.__main__:main"
