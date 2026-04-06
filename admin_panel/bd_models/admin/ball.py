@@ -114,9 +114,9 @@ class BallAdmin(admin.ModelAdmin):
             f'<img src="https://cdn.discordapp.com/emojis/{obj.emoji_id}.png?size=40" title="ID: {obj.emoji_id}" />'
         )
 
-    def formfield_for_dbfield(
+    def formfield_for_dbfield(  # type: ignore[override]
         self, db_field: "Field[Any, Any]", request: "HttpRequest | None", **kwargs: Any
-    ) -> "Field[Any, Any] | None":
+    ) -> "Field | None":
         if db_field.name == "capacity_description":
             kwargs["widget"] = Textarea()
         return super().formfield_for_dbfield(db_field, request, **kwargs)  # type: ignore

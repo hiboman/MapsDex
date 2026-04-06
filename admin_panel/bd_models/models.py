@@ -43,6 +43,7 @@ balls: dict[int, Ball] = {}
 regimes: dict[int, Regime] = {}
 economies: dict[int, Economy] = {}
 specials: dict[int, Special] = {}
+rarity_tiers: list["RarityTier"] = []
 
 
 class QuerySet[T: models.Model](models.QuerySet[T]):
@@ -335,7 +336,7 @@ class Ball(models.Model):
     def spawn_image(self) -> SafeText:
         return image_display(str(self.wild_card))
 
-    def save(self, **kwargs) -> None:
+    def save(self, force_insert=False, force_update=False, using=None, update_fields=None) -> None:  # type: ignore[override]
         def lower_catch_names(names: str | None) -> str | None:
             if names:
                 return ";".join([x.strip() for x in names.split(";")]).lower()
@@ -343,7 +344,9 @@ class Ball(models.Model):
         self.catch_names = lower_catch_names(self.catch_names)
         self.translations = lower_catch_names(self.translations)
 
-        return super().save(**kwargs)
+        return super().save(
+            force_insert=force_insert, force_update=force_update, using=using, update_fields=update_fields
+        )
 
 
 class BallInstance(models.Model):
@@ -400,8 +403,10 @@ class BallInstance(models.Model):
             text += settings.favorited_collectible_emoji
         if text:
             text += " "
-        if self.specialcard:
-            text += self.specialcard.emoji or ""
+        if self.specialcard and self.specialcard.emoji:
+            raw = self.specialcard.emoji
+            if not raw.isdigit():
+                text += raw
         return f"{text}#{self.pk:0X} {self.countryball.country}"
 
     def __str__(self) -> str:
@@ -643,3 +648,64 @@ class Block(models.Model):
     class Meta:
         managed = True
         db_table = "block"
+
+
+class RarityTier(models.Model):
+    name = models.CharField(max_length=64, unique=True, help_text="Display name of the tier (e.g. Legendary)")
+    emoji = models.CharField(max_length=8, help_text="Emoji shown next to the tier name (e.g. 🔴)")
+    color = models.CharField(
+        max_length=7, default="#FFFFFF", help_text="Hex color code used for display purposes (e.g. #FFD700)"
+    )
+    min_percentile = models.FloatField(
+        help_text=(
+            "Minimum rarity percentile for a collectible to qualify for this tier. "
+            "Uses a 0.0–1.0 scale where 1.0 is the rarest end and 0.0 is the most common. "
+            "Tiers are evaluated from highest to lowest; the first match wins."
+        )
+    )
+
+    objects: Manager[Self] = Manager()
+
+    def __str__(self) -> str:
+        return f"{self.emoji} {self.name} (≥{self.min_percentile:.0%})"
+
+    class Meta:
+        managed = True
+        db_table = "raritytier"
+        ordering = ["-min_percentile"]
+        verbose_name = "Rarity Tier"
+        verbose_name_plural = "Rarity Tiers"
+
+
+REPORT_TYPE_CHOICES = [
+    ("violation", "Report Violation"),
+    ("bug", "Report Bug"),
+    ("suggestion", "Provide Suggestion"),
+    ("other", "Other"),
+]
+
+
+class Report(models.Model):
+    report_id = models.CharField(max_length=6, unique=True, help_text="Unique report identifier")
+    user_id = models.BigIntegerField(help_text="Discord user ID who filed the report")
+    user_name = models.CharField(max_length=255, help_text="Discord username at time of report")
+    report_type = models.CharField(max_length=20, choices=REPORT_TYPE_CHOICES, help_text="Type of report submitted")
+    content = models.TextField(help_text="Report content/description")
+    created_at = models.DateTimeField(auto_now_add=True, editable=False)
+    replied = models.BooleanField(default=False, help_text="Whether this report has been replied to")
+    reply_content = models.TextField(null=True, blank=True, help_text="Administrator reply content")
+    reply_by = models.CharField(max_length=255, null=True, blank=True, help_text="Administrator who replied")
+    reply_time = models.DateTimeField(null=True, blank=True, editable=False)
+
+    objects: Manager[Self] = Manager()
+
+    def get_report_type_display(self) -> str:
+        return dict(REPORT_TYPE_CHOICES).get(self.report_type, self.report_type)
+
+    def __str__(self) -> str:
+        return f"Report {self.report_id} - {self.report_type}"
+
+    class Meta:
+        managed = True
+        db_table = "report"
+        ordering = ["-created_at"]

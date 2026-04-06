@@ -90,6 +90,13 @@ class SettingsAdmin(admin.ModelAdmin):
             },
         ),
         (
+            "Report system",
+            {
+                "description": "Configure where user reports submitted via /report are posted.",
+                "fields": ("report_guild_id", "report_channel_id"),
+            },
+        ),
+        (
             "Login with Discord",
             {
                 "description": "Configure this to login to this panel using Discord OAuth2",

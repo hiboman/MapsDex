@@ -11,16 +11,8 @@ from ballsdex.core.bot import impersonations
 from ballsdex.core.discord import LayoutView
 from ballsdex.core.utils import checks
 from ballsdex.core.utils.buttons import ConfirmChoiceView
-from ballsdex.core.utils.menus import (
-    ItemFormatter,
-    ListSource,
-    Menu,
-    TextFormatter,
-    TextSource,
-    dynamic_chunks,
-    iter_to_async,
-)
-from bd_models.models import Ball, GuildConfig
+from ballsdex.core.utils.menus import ItemFormatter, ListSource, Menu, dynamic_chunks, iter_to_async
+from bd_models.models import GuildConfig
 from settings.models import settings
 
 from .balls import balls as balls_group
@@ -110,6 +102,8 @@ class Admin(commands.Cog):
         try:
             channels = set()
             async for config in GuildConfig.objects.filter(enabled=True, spawn_channel__isnull=False):
+                if not config.spawn_channel:
+                    continue
                 channel = self.bot.get_channel(config.spawn_channel)
                 if channel:
                     channels.add(config.spawn_channel)
@@ -124,10 +118,10 @@ class Admin(commands.Cog):
             log.error(f"Error getting broadcast channels: {str(e)}")
             return set()
 
-    async def cog_check(self, ctx: commands.Context["BallsDexBot"]) -> bool:
+    async def cog_check(self, ctx: commands.Context["BallsDexBot"]) -> bool:  # type: ignore[override]
         return await checks.is_staff().predicate(ctx)
 
-    async def cog_app_command_error(
+    async def cog_app_command_error(  # type: ignore[override]
         self, interaction: discord.Interaction["BallsDexBot"], error: app_commands.AppCommandError
     ):
         if isinstance(error, app_commands.CommandSignatureMismatch):
@@ -411,46 +405,40 @@ class Admin(commands.Cog):
         """
         # Get target channel
         target_channel = channel if channel else ctx.channel
-        
+
         # Verify it's a valid messageable channel/thread
         if not isinstance(target_channel, (discord.TextChannel, discord.Thread)):
-            await ctx.send(
-                "Invalid channel type. Must be a text channel or thread.", ephemeral=True
-            )
+            await ctx.send("Invalid channel type. Must be a text channel or thread.", ephemeral=True)
             return
-        
+
         try:
             await target_channel.send(message)
-            
+
             # Get guild name safely (threads have parent channels)
-            guild_name = target_channel.guild.name if hasattr(target_channel, 'guild') else "Unknown"
-            
-            await ctx.send(
-                f"Message sent to {target_channel.mention} ({guild_name})", ephemeral=True
-            )
+            guild_name = target_channel.guild.name if hasattr(target_channel, "guild") else "Unknown"
+
+            await ctx.send(f"Message sent to {target_channel.mention} ({guild_name})", ephemeral=True)
         except discord.Forbidden:
-            await ctx.send(
-                f"Missing permissions to send messages in {target_channel.mention}", ephemeral=True
-            )
+            await ctx.send(f"Missing permissions to send messages in {target_channel.mention}", ephemeral=True)
         except Exception as e:
-            await ctx.send(
-                f"Failed to send message: {str(e)}", ephemeral=True
-            )
+            await ctx.send(f"Failed to send message: {str(e)}", ephemeral=True)
 
     @admin.command(name="broadcast", description="Send a broadcast message to all ball spawn channels")
     @checks.is_superuser()
-    @app_commands.choices(broadcast_type=[
-        app_commands.Choice(name="Text and Image", value="both"),
-        app_commands.Choice(name="Text Only", value="text"),
-        app_commands.Choice(name="Image Only", value="image")
-    ])
+    @app_commands.choices(
+        broadcast_type=[
+            app_commands.Choice(name="Text and Image", value="both"),
+            app_commands.Choice(name="Text Only", value="text"),
+            app_commands.Choice(name="Image Only", value="image"),
+        ]
+    )
     async def broadcast(
-        self, 
-        ctx: commands.Context["BallsDexBot"], 
+        self,
+        ctx: commands.Context["BallsDexBot"],
         broadcast_type: str,
         message: str | None = None,
         attachment: discord.Attachment | None = None,
-        anonymous: bool = False
+        anonymous: bool = False,
     ):
         """Send broadcast messages to all ball spawn channels"""
         if broadcast_type == "text" and not message:
@@ -470,58 +458,50 @@ class Admin(commands.Cog):
                 return
 
             await ctx.send("Broadcasting message...", ephemeral=True)
-            
+
             success_count = 0
             fail_count = 0
             failed_channels = []
-            
+
             broadcast_message = None
             if message:
                 broadcast_message = (
-                    "🔔 **System Announcement** 🔔\n"
-                    "------------------------\n"
-                    f"{message}\n"
-                    "------------------------\n"
+                    f"🔔 **System Announcement** 🔔\n------------------------\n{message}\n------------------------\n"
                 )
                 if not anonymous:
                     broadcast_message += f"*Sent by {ctx.author.name}*"
-            
-            file = None
+
             file_data = None
             if attachment and broadcast_type in ["both", "image"]:
                 try:
                     file_data = await attachment.read()
-                    file = await attachment.to_file()
                 except Exception as e:
                     log.error(f"Error downloading attachment: {str(e)}")
-                    await ctx.send("An error occurred while downloading the attachment. Only the text message will be sent.", ephemeral=True)
-            
+                    await ctx.send(
+                        "An error occurred while downloading the attachment. Only the text message will be sent.",
+                        ephemeral=True,
+                    )
+
             for channel_id in channels:
                 try:
                     channel = self.bot.get_channel(channel_id)
-                    if channel:
+                    if channel and isinstance(channel, discord.TextChannel):
                         if broadcast_type == "text":
                             await channel.send(broadcast_message)
-                        elif broadcast_type == "image" and file_data:
+                        elif broadcast_type == "image" and file_data and attachment:
                             new_file = discord.File(
-                                io.BytesIO(file_data),
-                                filename=attachment.filename,
-                                spoiler=attachment.is_spoiler()
+                                io.BytesIO(file_data), filename=attachment.filename, spoiler=attachment.is_spoiler()
                             )
                             await channel.send(file=new_file)
                         else:  # both
-                            if file_data and broadcast_message:
+                            if file_data and broadcast_message and attachment:
                                 new_file = discord.File(
-                                    io.BytesIO(file_data),
-                                    filename=attachment.filename,
-                                    spoiler=attachment.is_spoiler()
+                                    io.BytesIO(file_data), filename=attachment.filename, spoiler=attachment.is_spoiler()
                                 )
                                 await channel.send(broadcast_message, file=new_file)
-                            elif file_data:
+                            elif file_data and attachment:
                                 new_file = discord.File(
-                                    io.BytesIO(file_data),
-                                    filename=attachment.filename,
-                                    spoiler=attachment.is_spoiler()
+                                    io.BytesIO(file_data), filename=attachment.filename, spoiler=attachment.is_spoiler()
                                 )
                                 await channel.send(file=new_file)
                             elif broadcast_message:
@@ -534,15 +514,17 @@ class Admin(commands.Cog):
                     log.error(f"Error sending to channel {channel_id}: {str(e)}")
                     fail_count += 1
                     failed_channels.append(f"Channel ID: {channel_id}")
-            
-            result_message = f"Broadcast complete!\nSuccessfully sent to: {success_count} channels\nFailed: {fail_count} channels"
+
+            result_message = (
+                f"Broadcast complete!\nSuccessfully sent to: {success_count} channels\nFailed: {fail_count} channels"
+            )
             if failed_channels:
                 result_message += "\n\nFailed channels:\n" + "\n".join(failed_channels[:10])
                 if len(failed_channels) > 10:
                     result_message += f"\n... and {len(failed_channels) - 10} more"
-            
+
             await ctx.send(result_message, ephemeral=True)
-                
+
         except Exception as e:
             log.error(f"Error in broadcast: {str(e)}")
             await ctx.send("An error occurred while executing the command. Please try again later.", ephemeral=True)
@@ -550,14 +532,10 @@ class Admin(commands.Cog):
     @admin.command(name="broadcast_dm", description="Send a DM broadcast to specific users")
     @checks.is_superuser()
     async def broadcast_dm(
-        self, 
-        ctx: commands.Context["BallsDexBot"], 
-        message: str,
-        user_ids: str,
-        anonymous: bool = False
+        self, ctx: commands.Context["BallsDexBot"], message: str, user_ids: str, anonymous: bool = False
     ):
         """Private Message Broadcasting to Specified users
-        
+
         Args:
             message: the message you are going to send
             user_ids: a comma-separated list of user IDs to send the message to
@@ -570,20 +548,15 @@ class Admin(commands.Cog):
                 return
 
             await ctx.send("Starting DM broadcast...", ephemeral=True)
-            
+
             success_count = 0
             fail_count = 0
             failed_users = []
-            
-            dm_message = (
-                "🔔 **System DM** 🔔\n"
-                "------------------------\n"
-                f"{message}\n"
-                "------------------------\n"
-            )
+
+            dm_message = f"🔔 **System DM** 🔔\n------------------------\n{message}\n------------------------\n"
             if not anonymous:
                 dm_message += f"*Sent by {ctx.author.name}*"
-            
+
             for user_id in user_id_list:
                 try:
                     user = await self.bot.fetch_user(int(user_id))
@@ -597,15 +570,17 @@ class Admin(commands.Cog):
                     log.error(f"Error sending DM to user {user_id}: {str(e)}")
                     fail_count += 1
                     failed_users.append(f"User ID: {user_id}")
-            
-            result_message = f"DM broadcast complete!\nSuccessfully sent: {success_count} users\nFailed: {fail_count} users"
+
+            result_message = (
+                f"DM broadcast complete!\nSuccessfully sent: {success_count} users\nFailed: {fail_count} users"
+            )
             if failed_users:
                 result_message += "\n\nFailed users:\n" + "\n".join(failed_users[:10])
                 if len(failed_users) > 10:
                     result_message += f"\n... and {len(failed_users) - 10} more"
-            
+
             await ctx.send(result_message, ephemeral=True)
-                
+
         except Exception as e:
             log.error(f"Error in broadcast_dm: {str(e)}")
             try:

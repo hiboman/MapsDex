@@ -35,10 +35,12 @@ from bd_models.models import (
     BlacklistedGuild,
     BlacklistedID,
     Economy,
+    RarityTier,
     Regime,
     Special,
     balls,
     economies,
+    rarity_tiers,
     regimes,
     specials,
 )
@@ -54,10 +56,11 @@ impersonations: dict[int, discord.Member] = {}
 DEFAULT_PACKAGES = (
     ("admin", "ballsdex.packages.admin"),
     ("balls", "ballsdex.packages.balls"),
-    ("guildconfig", "ballsdex.packages.guildconfig"),
     ("countryballs", "ballsdex.packages.countryballs"),
+    ("guildconfig", "ballsdex.packages.guildconfig"),
     ("info", "ballsdex.packages.info"),
     ("players", "ballsdex.packages.players"),
+    ("rarity", "ballsdex.packages.rarity"),
     ("trade", "ballsdex.packages.trade"),
     ("report", "ballsdex.packages.report"),
 )
@@ -218,7 +221,7 @@ class BallsDexBot(commands.AutoShardedBot):
         self.command_log: set[int] = set()
         self.locked_balls = TTLCache(maxsize=99999, ttl=60 * 30)
 
-        self.owner_ids: set[int]
+        self.owner_ids: set[int] = set()  # type: ignore[assignment]
 
     async def start_prometheus_server(self):
         self.prometheus_server = PrometheusServer(self, settings.prometheus_host, settings.prometheus_port)
@@ -255,6 +258,11 @@ class BallsDexBot(commands.AutoShardedBot):
         async for special in Special.objects.all():
             specials[special.pk] = special
         table.add_row("Special events", str(len(specials)))
+
+        rarity_tiers.clear()
+        async for tier in RarityTier.objects.all():
+            rarity_tiers.append(tier)
+        table.add_row("Rarity tiers", str(len(rarity_tiers)))
 
         self.blacklist = set()
         async for blacklisted_id in BlacklistedID.objects.all().only("discord_id"):
@@ -369,10 +377,36 @@ class BallsDexBot(commands.AutoShardedBot):
         else:
             log.info("No package loaded.")
 
+        # Clean up stale admin commands
+        if "admin" in loaded_packages:
+            try:
+                admin_cog = self.get_cog("Admin")
+                if admin_cog and hasattr(admin_cog, "cleanup_stale_commands"):
+                    await admin_cog.cleanup_stale_commands()  # type: ignore[attr-defined]
+                    log.info("Cleaned up stale admin commands")
+            except Exception as e:
+                log.error(f"Failed to cleanup stale commands: {e}")
+
         if not self.skip_tree_sync:
-            log.info("Syncing global commands...")
-            synced_commands = await self.tree.sync()
-            log.info(f"Synced {len(synced_commands)} global commands.")
+            max_retries = 3
+            retry_delay = 5  # seconds
+
+            for attempt in range(max_retries):
+                try:
+                    log.info("Syncing global commands...")
+                    synced_commands = await self.tree.sync()
+                    log.info(f"Synced {len(synced_commands)} global commands.")
+                    break
+                except discord.errors.DiscordServerError as e:
+                    if e.status == 503 and attempt < max_retries - 1:
+                        log.warning(
+                            f"Discord API temporarily unavailable (503), retrying in {retry_delay} seconds... "
+                            f"(Attempt {attempt + 1}/{max_retries})"
+                        )
+                        await asyncio.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                    else:
+                        raise
         else:
             log.warning("Skipping command synchronization.")
 
@@ -397,6 +431,8 @@ class BallsDexBot(commands.AutoShardedBot):
             user = source.author
             guild_id = source.guild.id if source.guild else None
             send_func = source.send
+
+        # Check user blacklist
         if user.id in self.blacklist:
             await send_func(
                 "You are blacklisted from the bot.\nYou can appeal this blacklist in our support server: {}".format(
@@ -405,6 +441,7 @@ class BallsDexBot(commands.AutoShardedBot):
                 ephemeral=True,
             )
             return False
+
         if guild_id and guild_id in self.blacklist_guild:
             await send_func(
                 "This server is blacklisted from the bot."
@@ -412,6 +449,7 @@ class BallsDexBot(commands.AutoShardedBot):
                 ephemeral=True,
             )
             return False
+
         if source.command and user.id in self.command_log:
             log.info(f'{user} ({user.id}) used "{source.command.qualified_name}" in {source.guild} ({guild_id})')
         return True

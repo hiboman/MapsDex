@@ -69,7 +69,7 @@ def patch_gateway(proxy_url: str):
                 )
             except discord.HTTPException as exc:
                 raise discord.GatewayNotFound() from exc
-            return data["shards"], f"{proxy_url}?encoding=json&v=10"
+            return data["shards"], f"{proxy_url}?encoding=json&v=10", data.get("session_start_limit", {})
 
     class ProductionDiscordWebSocket(discord.gateway.DiscordWebSocket):  # type: ignore
         def is_ratelimited(self):

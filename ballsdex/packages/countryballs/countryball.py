@@ -8,12 +8,14 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 import discord
-from discord.ui import Button, TextInput, button
+from discord import MediaGalleryItem
+from discord.ui import ActionRow, Button, MediaGallery, TextDisplay, TextInput
 from django.utils import timezone
 
-from ballsdex.core.discord import Modal, View
+from ballsdex.core.discord import LayoutView, Modal
 from ballsdex.core.metrics import caught_balls
 from ballsdex.core.utils.utils import can_mention
+from ballsdex.packages.rarity.cog import compute_ball_tiers
 from bd_models.models import Ball, BallInstance, Player, Special, Trade, TradeObject, balls, specials
 from settings.models import PromptMessage, settings
 
@@ -85,7 +87,16 @@ class CountryballNamePrompt(Modal, title=f"Catch this {settings.collectible_name
         await interaction.followup.edit_message(self.view.message.id, view=self.view)
 
 
-class BallSpawnView(View):
+class RarityInfoView(LayoutView):
+    """Ephemeral LayoutView that displays rarity info for a single collectible."""
+
+    def __init__(self, text: str):
+        super().__init__()
+        self.clear_items()
+        self.add_item(TextDisplay(text))
+
+
+class BallSpawnView(LayoutView):
     """
     BallSpawnView is a Discord UI view that represents the spawning and interaction logic for a
     countryball in the BallsDex bot. It handles user interactions, spawning mechanics, and
@@ -115,6 +126,8 @@ class BallSpawnView(View):
         Force a specific health bonus if set, otherwise random range defined in config.yml.
     """
 
+    buttons: ActionRow = ActionRow()
+
     def __init__(self, bot: "BallsDexBot", model: Ball):
         super().__init__()
         self.bot = bot
@@ -135,6 +148,7 @@ class BallSpawnView(View):
 
     async def on_timeout(self):
         self.catch_button.disabled = True
+        self.rarity_button.disabled = True
         if self.message:
             try:
                 await self.message.edit(view=self)
@@ -143,7 +157,26 @@ class BallSpawnView(View):
         if self.ballinstance and not self.caught:
             await self.ballinstance.unlock()
 
-    @button(style=discord.ButtonStyle.primary, label="Catch me!")
+    @buttons.button(style=discord.ButtonStyle.secondary, label="🔍 Rarity")
+    async def rarity_button(self, interaction: discord.Interaction["BallsDexBot"], button: Button):
+        enabled_balls = [b for b in balls.values() if b.enabled]
+        entries = compute_ball_tiers(enabled_balls)
+        entry = next((e for e in entries if e[0].pk == self.model.pk), None)
+        if entry is None:
+            await interaction.response.send_message("Could not determine rarity data.", ephemeral=True)
+            return
+        _, tier_name, tier_emoji, prob = entry
+        rank = next(i + 1 for i, e in enumerate(entries) if e[0].pk == self.model.pk)
+        total = len(entries)
+        view = RarityInfoView(
+            f"**Tier:** {tier_emoji} {tier_name}\n"
+            f"**Spawn Probability:** `{prob:.3f}%`\n"
+            f"**Rarity Rank:** `#{rank}` out of {total} {settings.plural_collectible_name}\n"
+            f"-# Use /rarity info or /rarity list to explore all {settings.plural_collectible_name}."
+        )
+        await interaction.response.send_message(view=view, ephemeral=True)
+
+    @buttons.button(style=discord.ButtonStyle.primary, label="Catch me!")
     async def catch_button(self, interaction: discord.Interaction["BallsDexBot"], button: Button):
         if self.caught:
             slow_message = settings.get_random_message(PromptMessage.PromptType.SLOW).format(
@@ -250,8 +283,12 @@ class BallSpawnView(View):
                     emoji=self.bot.get_emoji(self.model.emoji_id),
                 )
 
+                self.clear_items()
+                self.add_item(TextDisplay(spawn_message))
+                self.add_item(MediaGallery(MediaGalleryItem(f"attachment://{file_name}")))
+                self.add_item(self.buttons)
                 self.message = await channel.send(
-                    spawn_message, view=self, file=discord.File(self.model.wild_card.path, filename=file_name)
+                    view=self, file=discord.File(self.model.wild_card.path, filename=file_name)
                 )
                 return True
             else:

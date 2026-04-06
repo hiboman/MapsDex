@@ -34,13 +34,7 @@ log = logging.getLogger("ballsdex.packages.countryballs")
 class EmbedPaginator(discord.ui.View):
     """A simple embed paginator with navigation buttons."""
 
-    def __init__(
-        self,
-        embeds: list[discord.Embed],
-        user_id: int,
-        timeout: float = 120,
-        compact: bool = False,
-    ):
+    def __init__(self, embeds: list[discord.Embed], user_id: int, timeout: float = 120, compact: bool = False):
         super().__init__(timeout=timeout)
         self.embeds = embeds
         self.user_id = user_id
@@ -66,7 +60,8 @@ class EmbedPaginator(discord.ui.View):
 
     async def on_timeout(self):
         for item in self.children:
-            item.disabled = True
+            if isinstance(item, discord.ui.Button):
+                item.disabled = True
         if self.message:
             try:
                 await self.message.edit(view=self)
@@ -257,13 +252,14 @@ class Balls(commands.GroupCog, group_name=settings.balls_slash_name):
             else:
                 combined = ""
 
+            combined_txt = f"{combined} " if combined else ""
             if user_obj == interaction.user:
                 await interaction.followup.send(
-                    f"You don't have any {combined} {settings.plural_collectible_name} yet."
+                    f"You don't have any {combined_txt}{settings.plural_collectible_name} yet."
                 )
             else:
                 await interaction.followup.send(
-                    f"{user_obj.name} doesn't have any {combined} {settings.plural_collectible_name} yet."
+                    f"{user_obj.name} doesn't have any {combined_txt}{settings.plural_collectible_name} yet."
                 )
             return
         if reverse:
@@ -399,6 +395,9 @@ class Balls(commands.GroupCog, group_name=settings.balls_slash_name):
 
         view = LayoutView()
         container = Container()
+        if user is not None and user != interaction.user:
+            header = TextDisplay(f"Viewing {user_obj.display_name}'s completion")
+            container.add_item(header)
         display = TextDisplay("")
         container.add_item(display)
         view.add_item(container)
@@ -993,20 +992,13 @@ class Balls(commands.GroupCog, group_name=settings.balls_slash_name):
 
     @app_commands.command()
     @app_commands.checks.cooldown(1, 20, key=lambda i: i.user.id)
-    async def leaderboard(
-        self,
-        interaction: discord.Interaction["BallsDexBot"],
-    ):
+    async def leaderboard(self, interaction: discord.Interaction["BallsDexBot"]):
         """
         Show the leaderboard of users with the most caught countryballs.
         """
         await interaction.response.defer(thinking=True)
 
-        query = (
-            Player.objects
-            .annotate(ball_count=Count("balls"))
-            .order_by("-ball_count")[:10]
-        )
+        query = Player.objects.annotate(ball_count=Count("balls")).order_by("-ball_count")[:10]
 
         players = []
         rank = 1
@@ -1017,23 +1009,21 @@ class Balls(commands.GroupCog, group_name=settings.balls_slash_name):
                     user = await self.bot.fetch_user(player.discord_id)
                 except Exception:
                     user = f"Unknown User ({player.discord_id})"
-            players.append((rank, user, player.ball_count))
+            ball_count = await BallInstance.objects.filter(player=player, deleted=False).acount()
+            players.append((rank, user, ball_count))
             rank += 1
 
         if not players:
             await interaction.followup.send("No players found.", ephemeral=True)
             return
 
-        embed = discord.Embed(
-            title="Top 10 Players",
-            color=discord.Color.blurple()
-        )
+        embed = discord.Embed(title="Top 10 Players", color=discord.Color.blurple())
 
         for rank, user, ball_count in players[:5]:
             embed.add_field(
                 name=f"**{rank}. {user.name if hasattr(user, 'name') else str(user)}**",
                 value=f"{settings.plural_collectible_name.title()}: {ball_count}",
-                inline=False
+                inline=False,
             )
 
         if len(players) <= 5:
@@ -1042,162 +1032,16 @@ class Balls(commands.GroupCog, group_name=settings.balls_slash_name):
 
         embed.set_footer(text="Page 1/2")
 
-        embed2 = discord.Embed(
-            title="Top 10 Players",
-            color=discord.Color.blurple()
-        )
+        embed2 = discord.Embed(title="Top 10 Players", color=discord.Color.blurple())
 
         for rank, user, ball_count in players[5:]:
             embed2.add_field(
                 name=f"**{rank}. {user.name if hasattr(user, 'name') else str(user)}**",
                 value=f"{settings.plural_collectible_name.title()}: {ball_count}",
-                inline=False
+                inline=False,
             )
 
         embed2.set_footer(text="Page 2/2")
 
         view = EmbedPaginator([embed, embed2], interaction.user.id, compact=True)
         view.message = await interaction.followup.send(embed=embed, view=view)
-
-    @app_commands.command()
-    @app_commands.checks.cooldown(1, 20, key=lambda i: i.user.id)
-    async def rarity(
-        self,
-        interaction: discord.Interaction["BallsDexBot"],
-        countryball: BallEnabledTransform | None = None,
-        tier: int | None = None,
-    ):
-        """
-        Show the rarity list of the collectibles
-        """
-        enabled_collectibles = [x for x in balls.values() if x.enabled]
-
-        if not enabled_collectibles:
-            await interaction.response.send_message(
-                f"There are no collectibles registered in {settings.bot_name} yet.",
-                ephemeral=True,
-            )
-            return
-
-        if countryball and tier:
-            await interaction.response.send_message("You can't use both parameters at the same time.")
-            return
-
-        rarity_to_collectibles = {}
-        for c in enabled_collectibles:
-            rarity_to_collectibles.setdefault(c.rarity, []).append(c)
-
-        sorted_rarities = sorted(rarity_to_collectibles.keys())
-
-        if countryball:
-            target_ball = countryball
-            tier_num = sorted_rarities.index(target_ball.rarity) + 1
-            collectible_name = f"\u200b ⋄ {self.bot.get_emoji(target_ball.emoji_id) or 'N/A'} {target_ball.country}"
-
-            embed = discord.Embed(title=f"{settings.bot_name} Rarity List", color=discord.Color.blurple())
-            embed.add_field(name=f"∥ T{tier_num}", value=collectible_name, inline=False)
-            await interaction.response.send_message(embed=embed)
-            return
-
-        if tier:
-            if tier < 1 or tier > len(sorted_rarities):
-                await interaction.response.send_message(f"T{tier} does not exist.")
-                return
-
-            rarity = sorted_rarities[tier - 1]
-            filtered_collectibles = rarity_to_collectibles[rarity]
-
-            chunks = []
-            current_chunk = []
-            current_length = 0
-
-            for c in filtered_collectibles:
-                line = f"\u200b ⋄ {self.bot.get_emoji(c.emoji_id) or 'N/A'} {c.country}\n"
-                line_length = len(line)
-
-                if current_length + line_length > 1024:
-                    chunks.append("".join(current_chunk))
-                    current_chunk = [line]
-                    current_length = line_length
-                else:
-                    current_chunk.append(line)
-                    current_length += line_length
-
-            if current_chunk:
-                chunks.append("".join(current_chunk))
-
-            if len(chunks) == 1:
-                embed = discord.Embed(
-                    title=f"{settings.bot_name} Rarity List",
-                    color=discord.Color.blurple(),
-                )
-                embed.add_field(name=f"∥ T{tier}", value=chunks[0], inline=False)
-                await interaction.response.send_message(embed=embed)
-            else:
-                embeds = []
-                for i, chunk in enumerate(chunks):
-                    embed = discord.Embed(
-                        title=f"{settings.bot_name} Rarity List - T{tier}",
-                        color=discord.Color.blurple(),
-                    )
-                    embed.add_field(name=f"∥ T{tier}", value=chunk, inline=False)
-                    embed.set_footer(text=f"Page {i+1}/{len(chunks)}")
-                    embeds.append(embed)
-                view = EmbedPaginator(embeds, interaction.user.id)
-                await interaction.response.send_message(embed=embeds[0], view=view)
-                view.message = await interaction.original_response()
-            return
-
-        all_entries = []
-
-        for i, rarity in enumerate(sorted_rarities, 1):
-            collectibles = rarity_to_collectibles[rarity]
-            names = "\n".join(
-                f"\u200b ⋄ {self.bot.get_emoji(c.emoji_id) or 'N/A'} {c.country}" for c in collectibles
-            )
-
-            if len(names) > 1024:
-                current_chunk = []
-                current_length = 0
-
-                for c in collectibles:
-                    line = f"\u200b ⋄ {self.bot.get_emoji(c.emoji_id) or 'N/A'} {c.country}\n"
-                    line_length = len(line)
-
-                    if current_length + line_length > 1024:
-                        chunk_text = "".join(current_chunk)
-                        all_entries.append((f"∥ T{i}", chunk_text))
-                        current_chunk = [line]
-                        current_length = line_length
-                    else:
-                        current_chunk.append(line)
-                        current_length += line_length
-
-                if current_chunk:
-                    chunk_text = "".join(current_chunk)
-                    all_entries.append((f"∥ T{i}", chunk_text))
-            else:
-                all_entries.append((f"∥ T{i}", names))
-
-        pages = []
-        for i in range(0, len(all_entries), 2):
-            page_entries = all_entries[i:i+2]
-            embed = discord.Embed(
-                title=f"{settings.bot_name} Rarity List",
-                color=discord.Color.blurple()
-            )
-            for name, value in page_entries:
-                embed.add_field(name=name, value=value, inline=False)
-            embed.set_footer(text=f"Page {len(pages)+1}/{(len(all_entries)+1)//2}")
-            pages.append(embed)
-
-        if not pages:
-            await interaction.response.send_message("No rarity data available.", ephemeral=True)
-            return
-
-        if len(pages) == 1:
-            await interaction.response.send_message(embed=pages[0])
-        else:
-            view = EmbedPaginator(pages, interaction.user.id)
-            await interaction.response.send_message(embed=pages[0], view=view)
-            view.message = await interaction.original_response()
