@@ -114,9 +114,6 @@ class SpawnCooldown:
         self.time = time
 
     async def increase(self, message: discord.Message) -> bool:
-        # this is a deque, not a list
-        # its property is that, once the max length is reached (100 for us),
-        # the oldest element is removed, thus we only have the last 100 messages in memory
         self.message_cache.append(CachedMessage(content=message.content, author_id=message.author.id))
 
         if self.lock.locked():
@@ -124,18 +121,25 @@ class SpawnCooldown:
 
         async with self.lock:
             message_multiplier = 1
-            if message.guild.member_count < 15 or message.guild.member_count > 1500:  # type: ignore
+
+            # Penalty uses total member_count (fast and sufficient for penalty)
+            member_count = message.guild.member_count or 0
+            if member_count < 15 or member_count > 1500:
                 message_multiplier /= 2
+
             if message._state.intents.message_content and len(message.content) < 5:
                 message_multiplier /= 2
+
             if len(set(x.author_id for x in self.message_cache)) < 4 or (
                 len(list(filter(lambda x: x.author_id == message.author.id, self.message_cache)))
-                / self.message_cache.maxlen  # type: ignore
+                / self.message_cache.maxlen
                 > 0.4
             ):
                 message_multiplier /= 2
+
             self.scaled_message_count += message_multiplier
             await asyncio.sleep(10)
+
         return True
 
 
@@ -149,7 +153,12 @@ class SpawnManager(BaseSpawnManager):
         if not guild:
             return False
 
-        if guild.member_count and guild.member_count < 15:
+        if self.bot.intents.members:
+            human_count = sum(1 for member in guild.members if not member.bot)
+        else:
+            human_count = guild.member_count or 0
+
+        if human_count < 15:
             return False
 
         cooldown = self.cooldowns.get(guild.id, None)
@@ -158,32 +167,26 @@ class SpawnManager(BaseSpawnManager):
             self.cooldowns[guild.id] = cooldown
 
         delta_t = (message.created_at - cooldown.time).total_seconds()
-        # change how the threshold varies according to the member count, while nuking farm servers
-        if not guild.member_count:
-            return False
-        elif guild.member_count < 15:
+
+        # Time multiplier based on server size
+        if human_count < 15:
             time_multiplier = 0.1
-        elif guild.member_count < 150:
+        elif human_count < 150:
             time_multiplier = 0.8
-        elif guild.member_count < 1500:
+        elif human_count < 1500:
             time_multiplier = 0.5
         else:
             time_multiplier = 0.2
 
-        # manager cannot be increased more than once per 10 seconds
         if not await cooldown.increase(message):
             return False
 
-        # normal increase, need to reach goal
         if cooldown.scaled_message_count + time_multiplier * (delta_t // 60) <= cooldown.threshold:
             return False
 
-        # at this point, the goal is reached
         if delta_t < 600:
-            # wait for at least 10 minutes before spawning
             return False
 
-        # spawn countryball
         cooldown.reset(message.created_at)
         return True
 
@@ -191,7 +194,8 @@ class SpawnManager(BaseSpawnManager):
         cooldown = self.cooldowns.get(guild.id)
         if not cooldown:
             await ctx.send(
-                "No spawn manager could be found for that guild. Spawn may have been disabled.", ephemeral=True
+                "No spawn manager could be found for that guild. Spawn may have been disabled.", 
+                ephemeral=True
             )
             return
 
@@ -204,40 +208,42 @@ class SpawnManager(BaseSpawnManager):
         embed.colour = discord.Colour.orange()
 
         delta = (
-            (ctx.interaction.created_at if ctx.interaction else ctx.message.created_at) - cooldown.time
+            (ctx.interaction.created_at if ctx.interaction else ctx.message.created_at) 
+            - cooldown.time
         ).total_seconds()
-        # change how the threshold varies according to the member count, while nuking farm servers
+
+        # Time multiplier based on server size
         if guild.member_count < 15:
             multiplier = 0.1
-            range = "1-14"
+            range_str = "1-14"
         elif guild.member_count < 150:
             multiplier = 0.8
-            range = "15-149"
+            range_str = "15-149"
         elif guild.member_count < 1500:
             multiplier = 0.5
-            range = "150-1499"
+            range_str = "150-1499"
         else:
             multiplier = 0.2
-            range = "1500+"
+            range_str = "1500+"
 
         penalities: list[str] = []
         if guild.member_count < 15 or guild.member_count > 1500:
             penalities.append("Server has less than 15 or more than 1500 members")
+
         if any(len(x.content) < 5 for x in cooldown.message_cache):
             penalities.append("Some cached messages are less than 5 characters long")
 
         authors_set = set(x.author_id for x in cooldown.message_cache)
         low_chatters = len(authors_set) < 4
-        # check if one author has more than 40% of messages in cache
+
+        # Check if one author has more than 40% of messages in cache
         major_chatter = any(
-            (
-                len(list(filter(lambda x: x.author_id == author, cooldown.message_cache)))
-                / cooldown.message_cache.maxlen  # type: ignore
-                > 0.4
-            )
+            len(list(filter(lambda x: x.author_id == author, cooldown.message_cache)))
+            / cooldown.message_cache.maxlen > 0.4
             for author in authors_set
         )
-        # this mess is needed since either conditions make up to a single penality
+
+        # Build penalties
         if low_chatters:
             if not major_chatter:
                 penalities.append("Message cache has less than 4 chatters")
@@ -251,6 +257,7 @@ class SpawnManager(BaseSpawnManager):
                 penalities.append("One user has more than 40% of messages within cache")
 
         penality_multiplier = 0.5 ** len(penalities)
+
         if penalities:
             embed.add_field(
                 name="\N{WARNING SIGN}\N{VARIATION SELECTOR-16} Penalities",
@@ -263,7 +270,7 @@ class SpawnManager(BaseSpawnManager):
             f"Manager initiated **{format_dt(cooldown.time, style='R')}**\n"
             f"Initial number of points to reach: **{cooldown.threshold}**\n"
             f"Message cache length: **{len(cooldown.message_cache)}**\n\n"
-            f"Time-based multiplier: **x{multiplier}** *({range} members)*\n"
+            f"Time-based multiplier: **x{multiplier}** *({range_str} members)*\n"
             "*This affects how much the number of points to reach reduces over time*\n"
             f"Penality multiplier: **x{penality_multiplier}**\n"
             "*This affects how much a message sent increases the number of points*\n\n"
@@ -278,6 +285,7 @@ class SpawnManager(BaseSpawnManager):
                 f"The manager is less than 10 minutes old, {settings.plural_collectible_name} "
                 "cannot spawn at the moment."
             )
+
         if informations:
             embed.add_field(
                 name="\N{INFORMATION SOURCE}\N{VARIATION SELECTOR-16} Informations",
