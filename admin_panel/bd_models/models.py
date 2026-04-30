@@ -6,7 +6,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Self, cast
+from typing import TYPE_CHECKING, Any, Iterable, Self, cast
 
 import discord
 from discord.utils import format_dt
@@ -333,7 +333,13 @@ class Ball(models.Model):
     def spawn_image(self) -> SafeText:
         return image_display(str(self.wild_card))
 
-    def save(self, **kwargs) -> None:
+    def save(
+        self,
+        force_insert: bool = False,
+        force_update: bool = False,
+        using: str | None = None,
+        update_fields: Iterable[str] | None = None,
+    ) -> None:
         def lower_catch_names(names: str | None) -> str | None:
             if names:
                 return ";".join([x.strip() for x in names.split(";")]).lower()
@@ -341,7 +347,9 @@ class Ball(models.Model):
         self.catch_names = lower_catch_names(self.catch_names)
         self.translations = lower_catch_names(self.translations)
 
-        return super().save(**kwargs)
+        return super().save(
+            force_insert=force_insert, force_update=force_update, using=using, update_fields=update_fields
+        )
 
 
 class BallInstance(models.Model):

@@ -2,7 +2,9 @@ from typing import TYPE_CHECKING, Any
 
 from django.contrib import admin
 from django.contrib.admin.utils import quote
+from django.db.models import Field, Model, QuerySet
 from django.forms import Textarea
+from django.http import HttpRequest
 from django.urls import reverse
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
@@ -11,8 +13,7 @@ from django.utils.text import capfirst
 from ..models import Ball, BallInstance, Economy, Regime, TradeObject, transform_media
 
 if TYPE_CHECKING:
-    from django.db.models import Field, Model, QuerySet
-    from django.http import HttpRequest
+    pass
 
 
 @admin.register(Regime)
@@ -114,12 +115,10 @@ class BallAdmin(admin.ModelAdmin):
             f'<img src="https://cdn.discordapp.com/emojis/{obj.emoji_id}.png?size=40" title="ID: {obj.emoji_id}" />'
         )
 
-    def formfield_for_dbfield(
-        self, db_field: "Field[Any, Any]", request: "HttpRequest | None", **kwargs: Any
-    ) -> "Field[Any, Any] | None":
+    def formfield_for_dbfield(self, db_field: Field[Any, Any], request: HttpRequest | None, **kwargs: Any) -> Any:
         if db_field.name == "capacity_description":
             kwargs["widget"] = Textarea()
-        return super().formfield_for_dbfield(db_field, request, **kwargs)  # type: ignore
+        return super().formfield_for_dbfield(db_field, request, **kwargs)
 
     def get_deleted_objects(
         self, objs: "QuerySet[Ball]", request: "HttpRequest"

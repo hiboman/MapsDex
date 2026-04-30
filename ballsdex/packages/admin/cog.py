@@ -10,16 +10,8 @@ from ballsdex.core.bot import impersonations
 from ballsdex.core.discord import LayoutView
 from ballsdex.core.utils import checks
 from ballsdex.core.utils.buttons import ConfirmChoiceView
-from ballsdex.core.utils.menus import (
-    ItemFormatter,
-    ListSource,
-    Menu,
-    TextFormatter,
-    TextSource,
-    dynamic_chunks,
-    iter_to_async,
-)
-from bd_models.models import Ball, GuildConfig
+from ballsdex.core.utils.menus import ItemFormatter, ListSource, Menu, dynamic_chunks, iter_to_async
+from bd_models.models import GuildConfig
 from settings.models import settings
 
 from .balls import balls as balls_group
@@ -104,12 +96,10 @@ class Admin(commands.Cog):
         self.admin.add_command(logs_group)
         self.admin.add_command(money_group)
 
-    async def cog_check(self, ctx: commands.Context["BallsDexBot"]) -> bool:
+    async def cog_check(self, ctx: commands.Context) -> bool:  # type: ignore
         return await checks.is_staff().predicate(ctx)
 
-    async def cog_app_command_error(
-        self, interaction: discord.Interaction["BallsDexBot"], error: app_commands.AppCommandError
-    ):
+    async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         if isinstance(error, app_commands.CommandSignatureMismatch):
             assert self.bot.user
             await interaction.response.send_message(
@@ -391,28 +381,20 @@ class Admin(commands.Cog):
         """
         # Get target channel
         target_channel = channel if channel else ctx.channel
-        
+
         # Verify it's a valid messageable channel/thread
         if not isinstance(target_channel, (discord.TextChannel, discord.Thread)):
-            await ctx.send(
-                "Invalid channel type. Must be a text channel or thread.", ephemeral=True
-            )
+            await ctx.send("Invalid channel type. Must be a text channel or thread.", ephemeral=True)
             return
-        
+
         try:
             await target_channel.send(message)
-            
+
             # Get guild name safely (threads have parent channels)
-            guild_name = target_channel.guild.name if hasattr(target_channel, 'guild') else "Unknown"
-            
-            await ctx.send(
-                f"Message sent to {target_channel.mention} ({guild_name})", ephemeral=True
-            )
+            guild_name = target_channel.guild.name if hasattr(target_channel, "guild") else "Unknown"
+
+            await ctx.send(f"Message sent to {target_channel.mention} ({guild_name})", ephemeral=True)
         except discord.Forbidden:
-            await ctx.send(
-                f"Missing permissions to send messages in {target_channel.mention}", ephemeral=True
-            )
+            await ctx.send(f"Missing permissions to send messages in {target_channel.mention}", ephemeral=True)
         except Exception as e:
-            await ctx.send(
-                f"Failed to send message: {str(e)}", ephemeral=True
-            )
+            await ctx.send(f"Failed to send message: {str(e)}", ephemeral=True)

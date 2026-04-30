@@ -235,9 +235,9 @@ class SpawnManager(BaseSpawnManager):
         authors_set = set(x.author_id for x in cooldown.message_cache)
         low_chatters = len(authors_set) < 4
         # check if one author has more than 40% of messages in cache
+        maxlen = cooldown.message_cache.maxlen or 100
         major_chatter = any(
-            len(list(filter(lambda x: x.author_id == author, cooldown.message_cache)))
-            / cooldown.message_cache.maxlen > 0.4
+            len(list(filter(lambda x: x.author_id == author, cooldown.message_cache))) / maxlen > 0.4
             for author in authors_set
         )
         # this mess is needed since either conditions make up to a single penality

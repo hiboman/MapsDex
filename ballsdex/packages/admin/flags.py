@@ -40,8 +40,7 @@ class GiveBallFlags(FlagConverter):
     health_bonus: int | None = flag(description="Force a specific health bonus percentage")
     attack_bonus: int | None = flag(description="Force a specific attack bonus percentage")
     n: Range[int, 1, 100] = flag(
-        description="The number of countryballs to give. If no number was specified, it's 1.",
-        default=1,
+        description="The number of countryballs to give. If no number was specified, it's 1.", default=1
     )
 
 

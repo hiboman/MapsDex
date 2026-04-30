@@ -17,11 +17,11 @@ from django.urls import reverse
 from ballsdex.core.bot import BallsDexBot
 from ballsdex.core.utils import checks
 from ballsdex.core.utils.buttons import ConfirmChoiceView
-from ballsdex.core.utils.transformers import SpecialTransform
-from bd_models.models import Ball, BallInstance, Player, Special, Trade, TradeObject, balls
-from settings.models import settings
-
 from ballsdex.core.utils.menus import Menu, TextFormatter, TextSource
+from ballsdex.core.utils.transformers import SpecialTransform
+from bd_models.models import Ball, BallInstance, Player, Special, TradeObject
+from bd_models.models import balls as balls_cache
+from settings.models import settings
 
 from .flags import BallsCountFlags, CreateFlags, GiveBallFlags, RarityFlags, SpawnFlags
 
@@ -125,15 +125,12 @@ async def spawn(ctx: commands.Context[BallsDexBot], *, flags: SpawnFlags):
         if flags.countryball:
             await ctx.send(
                 "The `tier_range` parameter can only be used with random spawns, not with a specific countryball.",
-                ephemeral=True
+                ephemeral=True,
             )
             return
 
         if "-" not in flags.tier_range:
-            await ctx.send(
-                "Invalid tier_range format. Use format like '2-8' for T2 to T8.",
-                ephemeral=True
-            )
+            await ctx.send("Invalid tier_range format. Use format like '2-8' for T2 to T8.", ephemeral=True)
             return
 
         try:
@@ -143,13 +140,11 @@ async def spawn(ctx: commands.Context[BallsDexBot], *, flags: SpawnFlags):
             min_tier = int(parts[0])
             max_tier = int(parts[1])
         except ValueError:
-            await ctx.send(
-                "Invalid tier_range format. Use format like '2-8' for T2 to T8.",
-                ephemeral=True
-            )
+            await ctx.send("Invalid tier_range format. Use format like '2-8' for T2 to T8.", ephemeral=True)
             return
 
-        enabled_collectibles = [x for x in balls.values() if x.enabled]
+        balls_dict = cast(dict[int, Ball], balls_cache)
+        enabled_collectibles = [x for x in balls_dict.values() if x.enabled]
         rarity_to_collectibles = {}
         for c in enabled_collectibles:
             rarity_to_collectibles.setdefault(c.rarity, []).append(c)
@@ -158,8 +153,7 @@ async def spawn(ctx: commands.Context[BallsDexBot], *, flags: SpawnFlags):
 
         if min_tier < 1 or max_tier > len(sorted_rarities) or min_tier > max_tier:
             await ctx.send(
-                f"Invalid tier range. Must be between T1-T{len(sorted_rarities)} and min <= max.",
-                ephemeral=True
+                f"Invalid tier range. Must be between T1-T{len(sorted_rarities)} and min <= max.", ephemeral=True
             )
             return
 
@@ -170,8 +164,7 @@ async def spawn(ctx: commands.Context[BallsDexBot], *, flags: SpawnFlags):
 
         if not filtered_balls:
             await ctx.send(
-                f"No {settings.plural_collectible_name} found in tier range T{min_tier}-T{max_tier}.",
-                ephemeral=True
+                f"No {settings.plural_collectible_name} found in tier range T{min_tier}-T{max_tier}.", ephemeral=True
             )
             return
 
@@ -413,27 +406,19 @@ async def balls_transfer(
         Discord user ID to set as the trade player for transferred balls. Only works with clean_balls=True.
     """
     if countryball_id and (percentage or users):
-        await ctx.send(
-            "Cannot use countryball_id with percentage or users.", ephemeral=True
-        )
+        await ctx.send("Cannot use countryball_id with percentage or users.", ephemeral=True)
         return
 
     if not countryball_id and not percentage:
-        await ctx.send(
-            "Either countryball_id or percentage must be provided.", ephemeral=True
-        )
+        await ctx.send("Either countryball_id or percentage must be provided.", ephemeral=True)
         return
 
     if percentage and not (1 <= percentage <= 100):
-        await ctx.send(
-            "Percentage must be between 1 and 100.", ephemeral=True
-        )
+        await ctx.send("Percentage must be between 1 and 100.", ephemeral=True)
         return
 
     if trade_player_id and not clean_balls:
-        await ctx.send(
-            "trade_player_id can only be used when clean_balls is True.", ephemeral=True
-        )
+        await ctx.send("trade_player_id can only be used when clean_balls is True.", ephemeral=True)
         return
 
     pool_user_ids = []
@@ -450,9 +435,7 @@ async def balls_transfer(
             return
 
     if percentage and not users and not user_2:
-        await ctx.send(
-            "user_2 required when using percentage without users.", ephemeral=True
-        )
+        await ctx.send("user_2 required when using percentage without users.", ephemeral=True)
         return
 
     await ctx.defer(ephemeral=True)
@@ -461,9 +444,7 @@ async def balls_transfer(
         try:
             player_1 = await Player.objects.aget(discord_id=user_1.id)
         except Player.DoesNotExist:
-            await ctx.send(
-                f"{user_1} does not exist or has no {settings.plural_collectible_name}.", ephemeral=True
-            )
+            await ctx.send(f"{user_1} does not exist or has no {settings.plural_collectible_name}.", ephemeral=True)
             return
 
         filters = {"player": player_1, "deleted": False}
@@ -480,14 +461,15 @@ async def balls_transfer(
 
         to_transfer = balls if percentage == 100 else random.sample(balls, int(len(balls) * (percentage / 100)))
         if not to_transfer:
-            await ctx.send(
-                f"Percentage results in 0 {settings.plural_collectible_name} to transfer.", ephemeral=True
-            )
+            await ctx.send(f"Percentage results in 0 {settings.plural_collectible_name} to transfer.", ephemeral=True)
             return
 
         if users:
             new_players = [(await Player.objects.aget_or_create(discord_id=uid))[0] for uid in pool_user_ids]
         else:
+            if not user_2:
+                await ctx.send("user_2 is required for this transfer.", ephemeral=True)
+                return
             player_2, _ = await Player.objects.aget_or_create(discord_id=user_2.id)
             new_players = [player_2]
 
@@ -495,7 +477,7 @@ async def balls_transfer(
 
         for ball in to_transfer:
             if clean_balls:
-                await TradeObject.objects.filter(ballinstance_id=ball.id).adelete()
+                await TradeObject.objects.filter(ballinstance_id=ball.pk).adelete()
                 ball.trade_player_id = trade_player_id
                 ball.spawned_time = None
                 ball.catch_date = datetime.now()
@@ -511,15 +493,20 @@ async def balls_transfer(
         special_text = f" {special.name}" if special else ""
         target = f"pool of {len(pool_user_ids)} users" if users else str(user_2)
         await ctx.send(
-            f"Transferred {count}{special_text} {settings.plural_collectible_name} ({percentage}%) from {user_1} to {target}.",
+            f"Transferred {count}{special_text} {settings.plural_collectible_name} ({percentage}%) "
+            f"from {user_1} to {target}.",
             ephemeral=True,
         )
         target_log = f"pool: {', '.join(str(uid) for uid in pool_user_ids)}" if users else str(user_2)
         log.info(
-            f"{ctx.author} transferred {count}{special_text} {settings.plural_collectible_name} ({percentage}%) from {user_1} to {target_log}.",
+            f"{ctx.author} transferred {count}{special_text} {settings.plural_collectible_name} "
+            f"({percentage}%) from {user_1} to {target_log}.",
             extra={"webhook": True},
         )
     else:
+        if not countryball_id:
+            await ctx.send("countryball_id is required for this transfer.", ephemeral=True)
+            return
         ball_ids_str = [bid.strip() for bid in countryball_id.split(",")]
         ball_ids = []
 
@@ -582,8 +569,7 @@ async def balls_transfer(
         if not transferred:
             target = f"pool of {len(pool_user_ids)} users" if users else str(user_1)
             await ctx.send(
-                f"All specified {settings.plural_collectible_name} already belong to {target}.",
-                ephemeral=True,
+                f"All specified {settings.plural_collectible_name} already belong to {target}.", ephemeral=True
             )
             return
 
@@ -592,20 +578,14 @@ async def balls_transfer(
 
         if count == 1 and not users:
             ball, original_player, new_player = transferred[0]
-            await ctx.send(
-                f"Transferred {ball}({ball.pk:0X}) from {original_player} to {new_player}.",
-                ephemeral=True,
-            )
+            await ctx.send(f"Transferred {ball}({ball.pk:0X}) from {original_player} to {new_player}.", ephemeral=True)
             log.info(
                 f"{ctx.author} transferred {ball}({ball.pk:0X}) from {original_player} to {new_player}.",
                 extra={"webhook": True},
             )
         else:
             ball_list = ", ".join([f"{b.pk:0X}" for b, _, _ in transferred])
-            await ctx.send(
-                f"Transferred {count} {settings.plural_collectible_name} to {target}.",
-                ephemeral=True,
-            )
+            await ctx.send(f"Transferred {count} {settings.plural_collectible_name} to {target}.", ephemeral=True)
             target_log = f"pool: {', '.join(str(uid) for uid in pool_user_ids)}" if users else str(user_1)
             log.info(
                 f"{ctx.author} transferred {count} {settings.plural_collectible_name} ({ball_list}) to {target_log}.",

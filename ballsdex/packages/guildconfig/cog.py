@@ -60,10 +60,7 @@ class Config(commands.GroupCog):
             human_count = guild.member_count or 0
 
         if human_count < 15:
-            await interaction.response.send_message(
-                "This server needs at least 15 human members.",
-                ephemeral=True
-            )
+            await interaction.response.send_message("This server needs at least 15 human members.", ephemeral=True)
             return
 
         user = cast(discord.Member, interaction.user)

@@ -7,7 +7,7 @@ import logging
 import time
 from datetime import timedelta
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Iterable
+from typing import TYPE_CHECKING, Any, Iterable, cast
 
 import discord
 from discord import app_commands
@@ -114,25 +114,25 @@ class ModelTransformer[T: "Model"](app_commands.Transformer, commands.Converter)
         return await self.get_queryset().aget(**{f"{self.column}__iexact": value})
 
     async def get_options(
-        self, interaction: discord.Interaction["BallsDexBot"], value: str
-    ) -> list[app_commands.Choice[int]]:
+        self, interaction: discord.Interaction, value: int | float | str
+    ) -> list[app_commands.Choice[int | float | str]]:
         """
         Generate the list of options for autocompletion
         """
         raise NotImplementedError()
 
     async def autocomplete(
-        self, interaction: discord.Interaction["BallsDexBot"], value: str
-    ) -> list[app_commands.Choice[int]]:
+        self, interaction: discord.Interaction, value: int | float | str
+    ) -> list[app_commands.Choice[int | float | str]]:
         t1 = time.time()
-        choices: list[app_commands.Choice[int]] = []
-        for option in await self.get_options(interaction, value):
+        choices: list[app_commands.Choice[int | float | str]] = []
+        for option in await self.get_options(interaction, str(value)):
             choices.append(option)
         t2 = time.time()
         log.debug(f"{self.name.title()} autocompletion took {round((t2 - t1) * 1000)}ms, {len(choices)} results")
         return choices
 
-    async def transform(self, interaction: discord.Interaction["BallsDexBot"], value: str) -> T:
+    async def transform(self, interaction: discord.Interaction, value: str) -> T:
         if not value:
             raise commands.BadArgument("You need to use the autocomplete function for the economy selection.")
         try:
@@ -145,7 +145,7 @@ class ModelTransformer[T: "Model"](app_commands.Transformer, commands.Converter)
         else:
             return instance
 
-    async def convert(self, ctx: commands.Context["BallsDexBot"], argument: str) -> T:
+    async def convert(self, ctx: commands.Context, argument: str) -> T:
         try:
             instance = await self.get_from_text(argument)
             await self.validate(ctx, instance)
@@ -175,8 +175,9 @@ class BallInstanceTransformer(ModelTransformer[BallInstance]):
             raise commands.BadArgument(f"That {settings.collectible_name} doesn't belong to you.")
 
     async def get_options(
-        self, interaction: discord.Interaction["BallsDexBot"], value: str
-    ) -> list[app_commands.Choice[int]]:
+        self, interaction: discord.Interaction, value: int | float | str
+    ) -> list[app_commands.Choice[int | float | str]]:
+        value_str = str(value)
         balls_queryset = self.get_queryset().filter(player__discord_id=interaction.user.id)
 
         if (special := getattr(interaction.namespace, "special", None)) and special.isdigit():
@@ -197,8 +198,8 @@ class BallInstanceTransformer(ModelTransformer[BallInstance]):
                     locked__isnull=False, locked__gt=timezone.now() - timedelta(minutes=30)
                 )
 
-        if value.startswith("="):
-            ball_name = value[1:]
+        if value_str.startswith("="):
+            ball_name = value_str[1:]
             balls_queryset = balls_queryset.filter(ball__country__iexact=ball_name)
         else:
             balls_queryset = (
@@ -211,12 +212,12 @@ class BallInstanceTransformer(ModelTransformer[BallInstance]):
                         (),
                     )
                 )
-                .filter(searchable__icontains=value.replace(".", ""))
+                .filter(searchable__icontains=value_str.replace(".", ""))
             )
         balls_queryset = balls_queryset[:25]
 
-        choices: list[app_commands.Choice] = [
-            app_commands.Choice(name=x.description(bot=interaction.client), value=f"{x.pk:X}")
+        choices: list[app_commands.Choice[int | float | str]] = [
+            app_commands.Choice(name=x.description(bot=cast("BallsDexBot", interaction.client)), value=f"{x.pk:X}")
             async for x in balls_queryset
         ]
         return choices
@@ -258,14 +259,15 @@ class TTLModelTransformer[T: "Model"](ModelTransformer[T]):
             self.search_map = {x: self.key(x).lower() for x in self.items.values()}
 
     async def get_options(
-        self, interaction: discord.Interaction["BallsDexBot"], value: str
-    ) -> list[app_commands.Choice[str]]:
+        self, interaction: discord.Interaction, value: int | float | str
+    ) -> list[app_commands.Choice[int | float | str]]:
         await self.maybe_refresh()
 
         i = 0
         choices: list[app_commands.Choice] = []
+        value_str = str(value).lower()
         for item in self.items.values():
-            if value.lower() in self.search_map[item]:
+            if value_str in self.search_map[item]:
                 choices.append(app_commands.Choice(name=self.key(item), value=str(item.pk)))
                 i += 1
                 if i == 25:

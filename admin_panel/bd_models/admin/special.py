@@ -1,14 +1,15 @@
 from typing import TYPE_CHECKING, Any
 
 from django.contrib import admin
+from django.db.models import Field
 from django.forms import Textarea
+from django.http import HttpRequest
 from django.utils.safestring import mark_safe
 
 from ..models import Special
 
 if TYPE_CHECKING:
-    from django.db.models import Field
-    from django.http import HttpRequest
+    pass
 
 
 @admin.register(Special)
@@ -44,9 +45,7 @@ class SpecialAdmin(admin.ModelAdmin):
             else obj.emoji
         )
 
-    def formfield_for_dbfield(
-        self, db_field: "Field[Any, Any]", request: "HttpRequest | None", **kwargs: Any
-    ) -> "Field[Any, Any] | None":
+    def formfield_for_dbfield(self, db_field: Field[Any, Any], request: HttpRequest | None, **kwargs: Any) -> Any:
         if db_field.name == "catch_phrase":
             kwargs["widget"] = Textarea()
-        return super().formfield_for_dbfield(db_field, request, **kwargs)  # type: ignore
+        return super().formfield_for_dbfield(db_field, request, **kwargs)
