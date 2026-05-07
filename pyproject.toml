@@ -1,6 +1,6 @@
 [project]
 name = "ballsdex"
-version = "3.0.2"
+version = "3.0.3"
 description = "Customizable Discord bot to collect and trade countryballs."
 authors = [
     { name = 'Auguste "laggron42" Charpentier', email = "laggron42@ballsdex.com" },
@@ -43,6 +43,7 @@ dependencies = [
     "cachetools==6.2.1",
     "sentry-sdk[django]==2.42.0",
     "watchfiles==1.1.1",  # uvicorn dependency, needs version bump for 3.14
+
 ]
 
 [project.optional-dependencies]
