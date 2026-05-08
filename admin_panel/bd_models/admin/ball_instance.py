@@ -29,6 +29,9 @@ class PlayerFilter(AutocompleteFilter):
 
 @admin.register(BallInstance)
 class BallInstanceAdmin(admin.ModelAdmin):
+    def get_queryset(self, request: "HttpRequest") -> "QuerySet[BallInstance]":
+        return BallInstance.all_objects.get_queryset()
+
     autocomplete_fields = ("player", "trade_player", "ball", "special")
     save_on_top = True
     fieldsets = [
@@ -77,7 +80,7 @@ class BallInstanceAdmin(admin.ModelAdmin):
     def change_view(
         self, request: "HttpRequest", object_id: str, form_url: str = "", extra_context: dict[str, Any] | None = None
     ) -> "HttpResponse":
-        obj = BallInstance.objects.prefetch_related("player").get(id=object_id)
+        obj = BallInstance.all_objects.prefetch_related("player").get(id=object_id)
 
         def _get_trades():
             trade_ids = TradeObject.objects.filter(ballinstance=obj).values_list("trade_id", flat=True)

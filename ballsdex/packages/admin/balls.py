@@ -314,7 +314,7 @@ async def balls_info(ctx: commands.Context[BallsDexBot], countryball_id: str):
         await ctx.send(f"The {settings.collectible_name} ID you gave is not valid.", ephemeral=True)
         return
     try:
-        ball = await BallInstance.objects.prefetch_related("player", "trade_player", "special").aget(id=pk)
+        ball = await BallInstance.all_objects.prefetch_related("player", "trade_player", "special").aget(id=pk)
     except BallInstance.DoesNotExist:
         await ctx.send(f"The {settings.collectible_name} ID you gave does not exist.", ephemeral=True)
         return
@@ -336,7 +336,8 @@ async def balls_info(ctx: commands.Context[BallsDexBot], countryball_id: str):
         f"**Spawned at:** {spawned_time}\n"
         f"**Catch time:** {catch_time} seconds\n"
         f"**Caught in:** {ball.server_id if ball.server_id else 'N/A'}\n"
-        f"**Traded:** {ball.trade_player}\n{admin_url}",
+        f"**Traded:** {ball.trade_player}\n"
+        f"**Deleted:** {'Yes' if ball.deleted else 'No'}\n{admin_url}",
         ephemeral=True,
     )
     log.info(f"{ctx.author} got info for {ball}({ball.pk}).", extra={"webhook": True})
@@ -361,7 +362,7 @@ async def balls_delete(ctx: commands.Context[BallsDexBot], countryball_id: str, 
         await ctx.send(f"The {settings.collectible_name} ID you gave is not valid.", ephemeral=True)
         return
     try:
-        ball = await BallInstance.objects.aget(id=ballIdConverted)
+        ball = await BallInstance.all_objects.aget(id=ballIdConverted)
     except BallInstance.DoesNotExist:
         await ctx.send(f"The {settings.collectible_name} ID you gave does not exist.", ephemeral=True)
         return
@@ -371,9 +372,11 @@ async def balls_delete(ctx: commands.Context[BallsDexBot], countryball_id: str, 
         await ctx.send(f"{settings.collectible_name.title()} {countryball_id} soft deleted.", ephemeral=True)
         log.info(f"{ctx.author} soft deleted {ball}({ball.pk}).", extra={"webhook": True})
     else:
+        ball_name = str(ball)
+        ball_id = f"#{ball.pk:0X}"
         await ball.adelete()
         await ctx.send(f"{settings.collectible_name.title()} {countryball_id} hard deleted.", ephemeral=True)
-        log.info(f"{ctx.author} hard deleted {ball}({ball.pk}).", extra={"webhook": True})
+        log.info(f"{ctx.author} hard deleted {ball_name}({ball_id}).", extra={"webhook": True})
 
 
 @balls.command(name="transfer")
@@ -655,7 +658,7 @@ async def balls_reset(
     if not view.value:
         return
     if percentage:
-        balls = [x async for x in BallInstance.objects.filter(player=player)]
+        balls = [x async for x in BallInstance.all_objects.filter(player=player)]
         to_delete = random.sample(balls, int(len(balls) * (percentage / 100)))
         for ball in to_delete:
             if soft_delete:
