@@ -3,53 +3,51 @@
 location = "git+https://github.com/hiboman/BallsDex-Report-Pack.git"
 path = "report"
 enabled = true
-editable = false
 
 # Broadcast Package
 [[ballsdex.packages]]
 location = "git+https://github.com/hiboman/BallsDex-Broadcast-Pack.git"
 path = "broadcast"
 enabled = true
-editable = false
 
 # Reward Package
 [[ballsdex.packages]]
 location = "git+https://github.com/hiboman/BallsDex-Reward-Pack.git"
 path = "reward"
 enabled = true
-editable = false
 
 # Collector Package
 [[ballsdex.packages]]
 location = "git+https://github.com/hiboman/BallsDex-Collector-Pack.git"
 path = "collector"
 enabled = true
-editable = false
 
 # Boss Package
 [[ballsdex.packages]]
 location = "git+https://github.com/hiboman/BallsDex-Boss-Pack.git"
 path = "boss"
 enabled = true
-editable = false
 
 # Battle Package
 [[ballsdex.packages]]
 location = "git+https://github.com/hiboman/BallsDex-Battle-Pack.git"
 path = "battle"
 enabled = true
-editable = false
 
 # Rarity Package
 [[ballsdex.packages]]
-location = "git+https://github.com/hiboman/BallsDex-Rarity-Pack.git"
+location = "git+https://github.com/hiboman/BallsDex-Rarity-Pack.git@0.0.1#master"
 path = "rarity"
 enabled = true
-editable = false
 
 # Leaderboard Package
 [[ballsdex.packages]]
 location = "git+https://github.com/hiboman/BallsDex-Leaderboard-Pack.git"
 path = "leaderboard"
 enabled = true
-editable = false
+
+# V2-Completion Package
+[[ballsdex.packages]]
+location = "git+https://github.com/cewlgruyere/V2-Completion.git@v0.0.2"
+path = "v2_completion"
+enabled = true
