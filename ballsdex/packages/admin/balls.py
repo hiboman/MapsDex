@@ -411,7 +411,7 @@ async def balls_transfer(
     special: Special | None
         Filter by special when using percentage transfer.
     clean_balls: bool
-        If True, removes trade player, spawn date, catch time, trade history, and server ID.
+        If True, removes trade player, trade history, and server ID.
     trade_player_id: int | None
         Discord user ID to set as the trade player for transferred balls. Only works with clean_balls=True.
     """
@@ -500,8 +500,6 @@ async def balls_transfer(
             if clean_balls:
                 await TradeObject.objects.filter(ballinstance_id=ball.id).adelete()
                 ball.trade_player_id = trade_player_id
-                ball.spawned_time = None
-                ball.catch_date = datetime.now()
                 ball.server_id = None
                 ball.favorite = False
 
@@ -571,8 +569,6 @@ async def balls_transfer(
             if clean_balls:
                 await TradeObject.objects.filter(ballinstance_id=ball.id).adelete()
                 ball.trade_player_id = trade_player_id
-                ball.spawned_time = None
-                ball.catch_date = datetime.now()
                 ball.server_id = None
                 ball.favorite = False
 
